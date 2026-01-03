@@ -139,37 +139,6 @@ AVAILABLE_MODELS = [
         }
     },
     {
-        "id": "squeezenet",
-        "name": "SqueezeNet v1.1",
-        "description": "Extremely lightweight classification model.",
-        "url_model": "https://github.com/DeepScale/SqueezeNet/raw/master/SqueezeNet_v1.1/squeezenet_v1.1.caffemodel",
-        "url_config": "https://raw.githubusercontent.com/DeepScale/SqueezeNet/master/SqueezeNet_v1.1/deploy.prototxt",
-        "filename_model": "squeezenet_v1.1.caffemodel",
-        "filename_config": "squeezenet_v1.1.prototxt",
-        "type": "caffe",
-        "preprocessing": {
-            "size": (227, 227),
-            "scale": 1.0,
-            "mean": (104, 117, 123),
-            "swapRB": False
-        }
-    },
-    {
-        "id": "inception_v3",
-        "name": "Inception V3",
-        "description": "High accuracy Google classification model.",
-        "url_model": "http://download.tensorflow.org/models/inception_v3_2016_08_28.tar.gz", # Needs extraction/handling or find caffemodel direct URL. Using a simpler BVLC GoogLeNet alternative for Caffe direct support or assume user handles tar.
-        # Simplification: Use BVLC GoogLeNet which is Inception v1 effectively, upgrading to ResNet50 as standard "Big" model alternative.
-        # Actually let's use ResNet-50 Caffe
-        "url_model": "http://ethereon.github.io/netscope/#/preset/resnet-50", # Placeholder URL, finding real direct link is hard for ResNet Caffe without repo.
-        # Let's use a reliable TinyYOLOv4 instead
-        "url_config": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4-tiny.cfg",
-        "filename_config": "yolov4-tiny.cfg",
-        "filename_model": "yolov4-tiny.weights",
-        "type": "darknet",
-        # INVALID ABOVE - fixing structure
-    },
-    {
         "id": "yolov4_tiny",
         "name": "YOLOv4 Tiny",
         "description": "Faster and more accurate than YOLOv3 Tiny.",
@@ -183,6 +152,38 @@ AVAILABLE_MODELS = [
             "scale": 1/255.0,
             "mean": (0, 0, 0),
             "swapRB": True
+        }
+    },
+    {
+        "id": "squeezenet",
+        "name": "SqueezeNet v1.1 (Classification)",
+        "description": "Extremely lightweight classification model (ImageNet).",
+        "url_model": "https://raw.githubusercontent.com/DeepScale/SqueezeNet/master/SqueezeNet_v1.1/squeezenet_v1.1.caffemodel",
+        "url_config": "https://raw.githubusercontent.com/DeepScale/SqueezeNet/master/SqueezeNet_v1.1/deploy.prototxt",
+        "filename_model": "squeezenet_v1.1.caffemodel",
+        "filename_config": "squeezenet_v1.1.deploy.prototxt",
+        "type": "caffe",
+        "preprocessing": {
+            "size": (227, 227),
+            "scale": 1.0,
+            "mean": (104, 117, 123),
+            "swapRB": False
+        }
+    },
+    {
+        "id": "resnet50",
+        "name": "ResNet-50 (Classification)",
+        "description": "Deep residual network for classification. High accuracy.",
+        "url_model": "http://d255.caffe.berkeleyvision.org/resnet50.caffemodel",
+        "url_config": "https://raw.githubusercontent.com/KaimingHe/deep-residual-networks/master/prototxt/ResNet-50-deploy.prototxt",
+        "filename_model": "resnet50.caffemodel",
+        "filename_config": "resnet50.prototxt",
+        "type": "caffe",
+        "preprocessing": {
+            "size": (224, 224),
+            "scale": 1.0,
+            "mean": (104, 117, 123),
+            "swapRB": False
         }
     }
 ]

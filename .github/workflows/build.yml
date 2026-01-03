@@ -1,10 +1,8 @@
 name: Build Application
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -22,14 +20,38 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
-
-    - name: Build EXE with PyInstaller
+        pip install pyinstaller pytest pytest-benchmark
+    
+    - name: Run Tests & Benchmarks
       run: |
-        pyinstaller main.py --name ZertamVision --onefile --windowed --add-data "assets;assets" --add-data "utils;utils"
+        pytest tests/
+
+    - name: Build Main EXE
+      run: |
+        pyinstaller main.py --name ZertamVision --onefile --windowed --add-data "assets;assets" --add-data "utils;utils" --icon="assets/icon/z.png"
+    
+    - name: Build Installer EXE
+      run: |
+        pyinstaller Installer/installer.py --name ZertamInstaller --onefile --windowed --add-data "dist/ZertamVision.exe;." --add-data "README.md;." --add-data "LICENSE;." --add-data "SECURITY.md;." --icon="assets/icon/z.png"
         
-    - name: Upload Artifact
+    - name: Upload Main Artifact
       uses: actions/upload-artifact@v3
       with:
         name: ZertamVision-EXE
         path: dist/ZertamVision.exe
+
+    - name: Upload Installer Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ZertamInstaller-EXE
+        path: dist/ZertamInstaller.exe
+
+    - name: Upload to Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          dist/ZertamVision.exe
+          dist/ZertamInstaller.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

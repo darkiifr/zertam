@@ -4,14 +4,16 @@ import array
 import numpy as np
 import threading
 import time
+from datetime import datetime
 import os
 import logging
-from detector import ObjectDetector
+from detector import ObjectDetector, ImageClassifier
 from utils.camera import ThreadedCamera
 from utils.logger import setup_logger, add_gui_handler
-from utils.marketplace import AVAILABLE_MODELS, get_model_status, install_model
 from utils.hardware import get_cpu_name, get_gpu_name, get_system_stats
 from utils.tracker import CentroidTracker
+from utils.updater import check_for_updates
+from utils.marketplace import AVAILABLE_MODELS, get_model_status, install_model
 import psutil
 
 import queue
@@ -63,6 +65,8 @@ class ZertamApp:
         self.tracker = CentroidTracker()
         self.tracking_enabled = False
         self.train_class_name = "NewObject"
+        self.classifier = None
+        self.helper_enabled = False
         
         # Initialize Core
         try:
@@ -144,6 +148,9 @@ class ZertamApp:
         # Snapshot Status
         self.snapshot_message = ""
         self.snapshot_timer = 0
+        
+        # Check Updates
+        check_for_updates(self.on_update_found)
 
         # Main Window
         with dpg.window(label="Main Window", tag="primary_window"):
@@ -214,7 +221,13 @@ class ZertamApp:
                                 dpg.add_text(model["description"], wrap=300)
                                 status = get_model_status(model["id"])
                                 col = (0, 255, 128) if status == "Installed" else (255, 100, 100)
-                                dpg.add_text(status, color=col, tag=f"status_{model['id']}")
+                                
+                                # Check if tag exists to avoid duplicate alias error on reload/redraw
+                                tag_id = f"status_{model['id']}"
+                                if dpg.does_item_exist(tag_id):
+                                    dpg.delete_item(tag_id)
+                                    
+                                dpg.add_text(status, color=col, tag=tag_id)
                                 dpg.add_button(label="Download", callback=self.on_download_click, user_data=model["id"])
 
                 # TAB 3: Train Studio
@@ -234,7 +247,19 @@ class ZertamApp:
                                      dpg.add_text("Class Name:")
                                      dpg.add_input_text(default_value="NewObject", tag="input_class_name", callback=self.update_train_name)
                                      dpg.add_spacer(height=10)
-                                     dpg.add_button(label="📸 Capture Image", width=200, height=50, callback=self.on_train_capture_click)
+                                     
+                                     dpg.add_text("Target Architecture:")
+                                     dpg.add_combo(items=["MobileNetSSD", "YOLOv3", "ResNet50", "Custom"], default_value="MobileNetSSD", width=200)
+                                     
+                                     dpg.add_separator()
+                                     dpg.add_checkbox(label="Use Helper Classifier", callback=self.toggle_helper)
+                                     class_models = [m["name"] for m in AVAILABLE_MODELS if "Classification" in m["description"]]
+                                     dpg.add_combo(items=class_models, callback=self.on_classifier_combo_change, width=200, tag="combo_classifier")
+                                     dpg.add_button(label="Download Model", tag="btn_download_helper", show=False, callback=self.on_download_helper_click)
+                                     dpg.add_text("Prediction: None", tag="lbl_helper_pred", color=(255, 200, 0))
+                                     
+                                     dpg.add_spacer(height=10)
+                                     dpg.add_button(label="Capture Image", width=200, height=50, callback=self.on_train_capture_click)
                                      dpg.add_text("", tag="lbl_train_status", color=(0, 255, 255))
                                      
                         # Sub-tab: Video Extraction
@@ -357,6 +382,50 @@ class ZertamApp:
     def update_train_name(self, sender, data):
         self.train_class_name = data
 
+    def toggle_helper(self, sender, data):
+        self.helper_enabled = data
+        if data and not self.classifier:
+            # Try to load selected
+            model_name = dpg.get_value("combo_classifier")
+            if model_name:
+                self.on_classifier_combo_change(None, model_name)
+
+    def on_classifier_combo_change(self, sender, data):
+        model = next((m for m in AVAILABLE_MODELS if m["name"] == data), None)
+        if not model: return
+        
+        status = get_model_status(model["id"])
+        if status != "Installed":
+            dpg.set_value("lbl_helper_pred", "Model not installed!")
+            dpg.configure_item("btn_download_helper", show=True, user_data=model["id"])
+            return
+        
+        dpg.configure_item("btn_download_helper", show=False)
+        self.load_classifier(model)
+
+    def on_download_helper_click(self, sender, app_data, user_data):
+        dpg.set_value("lbl_helper_pred", "Downloading...")
+        dpg.configure_item("btn_download_helper", show=False)
+        install_model(user_data, lambda mid: self.on_helper_download_complete(mid))
+
+    def on_helper_download_complete(self, model_id):
+        # Find model name to reload combo logic
+        model = next((m for m in AVAILABLE_MODELS if m["id"] == model_id), None)
+        if model:
+            dpg.set_value("lbl_helper_pred", "Installed! Loading...")
+            self.load_classifier(model)
+
+    def load_classifier(self, model):
+        try:
+            path_m = os.path.join("models", model["filename_model"])
+            path_c = os.path.join("models", model["filename_config"])
+            self.classifier = ImageClassifier(path_m, path_c, model.get("preprocessing"))
+            self.logger.info(f"Classifier {model['name']} loaded.")
+            dpg.set_value("lbl_helper_pred", f"Loaded {model['name']}")
+        except Exception as e:
+            self.logger.error(f"Failed to load classifier: {e}")
+            dpg.set_value("lbl_helper_pred", "Load Failed")
+
     def on_train_capture_click(self, sender, app_data):
         self._save_dataset_image(self.train_class_name)
 
@@ -371,7 +440,7 @@ class ZertamApp:
         if not os.path.exists(base_dir):
             os.makedirs(base_dir)
             
-        timestamp = time.strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = os.path.join(base_dir, f"{timestamp}.jpg")
         
         try:
@@ -454,6 +523,14 @@ class ZertamApp:
                             self.logger.error(f"Detection Error: {e}")
                         last_results = []
 
+                # Helper Classification
+                if self.helper_enabled and self.classifier and frame_count % 10 == 0:
+                    try:
+                        cid, conf = self.classifier.classify(frame)
+                        dpg.set_value("lbl_helper_pred", f"Class ID: {cid} ({conf:.2f})")
+                    except Exception as e:
+                        pass
+
                 # Draw
                 display_frame = cv2.resize(frame, (WIDTH, HEIGHT))
                 for res in last_results:
@@ -524,6 +601,16 @@ class ZertamApp:
             dpg.render_dearpygui_frame()
 
         self.cleanup()
+
+    def on_update_found(self, update_info):
+        if update_info:
+             # Use a small popup or text to notify
+             # Since DPG is not thread-safe for direct UI creation from thread,
+             # we queue a message or just set a flag.
+             # For simplicity here, we'll try to set a global tag if it exists, or log it.
+             # Ideally, we should add an "Update Available" button in the Top Bar.
+             self.logger.info(f"UPDATE AVAILABLE: {update_info['version']}")
+             self.log_queue.put(f"UPDATE AVAILABLE: {update_info['version']}")
 
     def cleanup(self):
         if self.camera: self.camera.stop()

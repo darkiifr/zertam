@@ -109,3 +109,45 @@ class ObjectDetector:
              pass
 
         return results
+
+class ImageClassifier:
+    def __init__(self, model_path, config_path, preprocessing=None):
+        self.preprocessing = preprocessing or {
+            "size": (224, 224),
+            "scale": 1.0,
+            "mean": (104, 117, 123),
+            "swapRB": False
+        }
+        
+        logger.info(f"Loading classifier from: {model_path}")
+        if not os.path.exists(model_path) or not os.path.exists(config_path):
+            raise FileNotFoundError("Model files not found")
+
+        try:
+            self.net = cv2.dnn.readNet(config_path, model_path)
+            self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+            self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        except Exception as e:
+            logger.error(f"Failed to load classifier: {e}")
+            raise e
+
+    def classify(self, frame):
+        """
+        Returns top class index and confidence.
+        """
+        size = self.preprocessing.get("size", (224, 224))
+        scale = self.preprocessing.get("scale", 1.0)
+        mean = self.preprocessing.get("mean", (104, 117, 123))
+        swapRB = self.preprocessing.get("swapRB", False)
+
+        blob = cv2.dnn.blobFromImage(frame, scale, size, mean, swapRB, crop=False)
+        self.net.setInput(blob)
+        preds = self.net.forward()
+        
+        # Flatten and find max
+        preds = preds.flatten()
+        class_id = np.argmax(preds)
+        confidence = preds[class_id]
+        
+        return class_id, confidence
+
