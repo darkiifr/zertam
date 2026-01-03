@@ -35,13 +35,13 @@ jobs:
         pyinstaller Installer/installer.py --name ZertamInstaller --onefile --windowed --add-data "dist/ZertamVision.exe;." --add-data "README.md;." --add-data "LICENSE;." --add-data "SECURITY.md;." --icon="assets/icon/z.png"
         
     - name: Upload Main Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ZertamVision-EXE
         path: dist/ZertamVision.exe
 
     - name: Upload Installer Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ZertamInstaller-EXE
         path: dist/ZertamInstaller.exe
